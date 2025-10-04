@@ -1,1 +1,5 @@
 streamlit
+supabase==2.21.1
+pandas 
+plotly 
+python-dotenv
