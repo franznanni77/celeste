@@ -259,8 +259,22 @@ def render_edit_customer(customer, customer_id):
         
         with col2:
             new_ascendant = st.text_input("Ascendente", value=customer.get('ascendant', ''))
-            new_gender = st.selectbox("Genere", ['M', 'F', 'Other'], 
-                                     index=['M', 'F', 'Other'].index(customer.get('gender', 'M')))
+            
+            # FIX: Gestione sicura del gender
+            current_gender = customer.get('gender', 'M')
+            gender_options = ['M', 'F', 'Other']
+            
+            # Se il valore corrente non è nella lista, usa 'M' come default
+            if current_gender not in gender_options:
+                current_gender = 'M'
+            
+            gender_index = gender_options.index(current_gender)
+            
+            new_gender = st.selectbox(
+                "Genere", 
+                options=gender_options,
+                index=gender_index
+            )
         
         submitted = st.form_submit_button("💾 Salva Modifiche", type="primary")
         
