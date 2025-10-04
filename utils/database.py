@@ -612,3 +612,296 @@ def get_available_service_plans():
     except Exception as e:
         st.error(f"Errore nel recupero piani: {str(e)}")
         return pd.DataFrame()
+# ==================== STATISTICHE E ANALYTICS ====================
+
+from datetime import datetime, timedelta
+import pandas as pd
+
+def get_period_dates(period):
+    """
+    Restituisce le date di inizio e fine per un periodo
+    Args:
+        period: str - 'today', 'week', 'month'
+    Returns: tuple (start_date, end_date)
+    """
+    today = datetime.now().date()
+    
+    if period == 'today':
+        return today, today
+    elif period == 'week':
+        start = today - timedelta(days=7)
+        return start, today
+    elif period == 'month':
+        start = today - timedelta(days=30)
+        return start, today
+    else:
+        return today, today
+
+@st.cache_data(ttl=300)  # Cache 5 minuti per statistiche
+def get_stats_registrations(period='today'):
+    """
+    Ottiene il numero di nuovi utenti iscritti in un periodo
+    Args:
+        period: str - 'today', 'week', 'month'
+    Returns: int - numero nuovi iscritti
+    """
+    try:
+        start_date, end_date = get_period_dates(period)
+        
+        # Converte in datetime per confronto
+        start_datetime = datetime.combine(start_date, datetime.min.time()).isoformat()
+        end_datetime = datetime.combine(end_date, datetime.max.time()).isoformat()
+        
+        response = supabase.table('customers')\
+            .select('id', count='exact')\
+            .gte('created_at', start_datetime)\
+            .lte('created_at', end_datetime)\
+            .execute()
+        
+        return response.count if hasattr(response, 'count') else 0
+        
+    except Exception as e:
+        st.error(f"Errore nel recupero registrazioni: {str(e)}")
+        return 0
+
+@st.cache_data(ttl=300)
+def get_stats_payments(period='today'):
+    """
+    Ottiene il numero di utenti che hanno pagato (abbonamenti NON trial) in un periodo
+    Args:
+        period: str - 'today', 'week', 'month'
+    Returns: int - numero pagamenti
+    """
+    try:
+        start_date, end_date = get_period_dates(period)
+        
+        # Abbonamenti iniziati nel periodo che NON sono trial
+        response = supabase.table('subscriptions')\
+            .select('id, service_plans!inner(is_trial)', count='exact')\
+            .gte('start_date', start_date.isoformat())\
+            .lte('start_date', end_date.isoformat())\
+            .eq('service_plans.is_trial', False)\
+            .execute()
+        
+        return response.count if hasattr(response, 'count') else 0
+        
+    except Exception as e:
+        st.error(f"Errore nel recupero pagamenti: {str(e)}")
+        return 0
+
+@st.cache_data(ttl=300)
+def get_stats_expired_not_renewed(period='today'):
+    """
+    Ottiene il numero di utenti scaduti che NON hanno rinnovato
+    Args:
+        period: str - 'today', 'week', 'month'
+    Returns: int - numero scaduti non rinnovati
+    """
+    try:
+        start_date, end_date = get_period_dates(period)
+        
+        # Abbonamenti scaduti nel periodo
+        expired = supabase.table('subscriptions')\
+            .select('customer_id')\
+            .eq('status', 'expired')\
+            .gte('end_date', start_date.isoformat())\
+            .lte('end_date', end_date.isoformat())\
+            .execute()
+        
+        if not expired.data:
+            return 0
+        
+        # Estrai customer_id degli scaduti
+        expired_customer_ids = [sub['customer_id'] for sub in expired.data]
+        
+        # Conta quanti NON hanno un abbonamento attivo
+        not_renewed = 0
+        for customer_id in set(expired_customer_ids):  # Usa set per evitare duplicati
+            # Verifica se ha abbonamento attivo
+            active = supabase.table('subscriptions')\
+                .select('id', count='exact')\
+                .eq('customer_id', customer_id)\
+                .eq('is_active', True)\
+                .eq('status', 'active')\
+                .execute()
+            
+            if not hasattr(active, 'count') or active.count == 0:
+                not_renewed += 1
+        
+        return not_renewed
+        
+    except Exception as e:
+        st.error(f"Errore nel recupero scaduti: {str(e)}")
+        return 0
+
+@st.cache_data(ttl=300)
+def get_mrr():
+    """
+    Calcola il Monthly Recurring Revenue (MRR)
+    Returns: float - MRR totale
+    """
+    try:
+        # Prende tutti gli abbonamenti attivi NON trial
+        response = supabase.table('subscriptions')\
+            .select('service_plans(price, duration_days, is_trial)')\
+            .eq('is_active', True)\
+            .eq('status', 'active')\
+            .execute()
+        
+        if not response.data:
+            return 0.0
+        
+        mrr = 0.0
+        for sub in response.data:
+            plan = sub.get('service_plans', {})
+            
+            # Salta trial
+            if plan.get('is_trial', True):
+                continue
+            
+            price = float(plan.get('price', 0))
+            duration_days = int(plan.get('duration_days', 30))
+            
+            # Normalizza a mensile (30 giorni)
+            monthly_price = (price / duration_days) * 30
+            mrr += monthly_price
+        
+        return round(mrr, 2)
+        
+    except Exception as e:
+        st.error(f"Errore nel calcolo MRR: {str(e)}")
+        return 0.0
+
+@st.cache_data(ttl=300)
+def get_arr():
+    """
+    Calcola l'Annual Recurring Revenue (ARR)
+    Returns: float - ARR (MRR × 12)
+    """
+    mrr = get_mrr()
+    return round(mrr * 12, 2)
+
+@st.cache_data(ttl=300)
+def get_revenue_by_period(period='today'):
+    """
+    Calcola il revenue generato in un periodo
+    Args:
+        period: str - 'today', 'week', 'month'
+    Returns: float - revenue totale
+    """
+    try:
+        start_date, end_date = get_period_dates(period)
+        
+        # Abbonamenti paganti iniziati nel periodo
+        response = supabase.table('subscriptions')\
+            .select('service_plans(price, is_trial)')\
+            .gte('start_date', start_date.isoformat())\
+            .lte('start_date', end_date.isoformat())\
+            .execute()
+        
+        if not response.data:
+            return 0.0
+        
+        revenue = 0.0
+        for sub in response.data:
+            plan = sub.get('service_plans', {})
+            
+            # Salta trial
+            if plan.get('is_trial', True):
+                continue
+            
+            price = float(plan.get('price', 0))
+            revenue += price
+        
+        return round(revenue, 2)
+        
+    except Exception as e:
+        st.error(f"Errore nel calcolo revenue: {str(e)}")
+        return 0.0
+
+@st.cache_data(ttl=300)
+def get_arpu():
+    """
+    Calcola l'Average Revenue Per User (ARPU)
+    Returns: float - revenue medio per utente attivo
+    """
+    try:
+        # Conta clienti attivi
+        active_customers = supabase.table('subscriptions')\
+            .select('customer_id', count='exact')\
+            .eq('is_active', True)\
+            .eq('status', 'active')\
+            .execute()
+        
+        count = active_customers.count if hasattr(active_customers, 'count') else 0
+        
+        if count == 0:
+            return 0.0
+        
+        mrr = get_mrr()
+        arpu = mrr / count
+        
+        return round(arpu, 2)
+        
+    except Exception as e:
+        st.error(f"Errore nel calcolo ARPU: {str(e)}")
+        return 0.0
+
+@st.cache_data(ttl=300)
+def get_revenue_projection():
+    """
+    Calcola la proiezione revenue per il mese corrente
+    Basata sul revenue medio giornaliero degli ultimi 7 giorni
+    Returns: float - proiezione revenue mensile
+    """
+    try:
+        # Revenue ultimi 7 giorni
+        revenue_week = get_revenue_by_period('week')
+        
+        # Media giornaliera
+        daily_avg = revenue_week / 7
+        
+        # Proiezione su 30 giorni
+        projection = daily_avg * 30
+        
+        return round(projection, 2)
+        
+    except Exception as e:
+        st.error(f"Errore nel calcolo proiezione: {str(e)}")
+        return 0.0
+
+@st.cache_data(ttl=300)
+def get_stats_summary():
+    """
+    Ottiene un riepilogo completo delle statistiche
+    Returns: dict con tutte le metriche principali
+    """
+    try:
+        return {
+            # Registrazioni
+            'registrations_today': get_stats_registrations('today'),
+            'registrations_week': get_stats_registrations('week'),
+            'registrations_month': get_stats_registrations('month'),
+            
+            # Pagamenti
+            'payments_today': get_stats_payments('today'),
+            'payments_week': get_stats_payments('week'),
+            'payments_month': get_stats_payments('month'),
+            
+            # Scaduti non rinnovati
+            'expired_today': get_stats_expired_not_renewed('today'),
+            'expired_week': get_stats_expired_not_renewed('week'),
+            'expired_month': get_stats_expired_not_renewed('month'),
+            
+            # Revenue
+            'mrr': get_mrr(),
+            'arr': get_arr(),
+            'revenue_today': get_revenue_by_period('today'),
+            'revenue_week': get_revenue_by_period('week'),
+            'revenue_month': get_revenue_by_period('month'),
+            'arpu': get_arpu(),
+            'revenue_projection': get_revenue_projection()
+        }
+    except Exception as e:
+        st.error(f"Errore nel recupero statistiche: {str(e)}")
+        return {}

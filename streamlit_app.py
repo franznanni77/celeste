@@ -5,7 +5,7 @@ Gestisce il routing tra le diverse pagine dell'applicazione
 
 import streamlit as st
 from utils.config import apply_custom_css
-from pages_content import dashboard, customers, horoscopes, customer_detail
+from pages_content import dashboard, customers, horoscopes, customer_detail, statistics
 
 # ==================== CONFIGURAZIONE ====================
 
@@ -41,21 +41,42 @@ def render_sidebar():
         # Menu navigazione principale
         st.markdown("#### 📍 Navigazione")
         
-        if st.button("🏠 Dashboard", use_container_width=True, 
-                    type="primary" if st.session_state.current_page == 'dashboard' else "secondary"):
+        # Dashboard
+        if st.button(
+            "🏠 Dashboard", 
+            use_container_width=True, 
+            type="primary" if st.session_state.current_page == 'dashboard' else "secondary"
+        ):
             st.session_state.current_page = 'dashboard'
             st.session_state.filter_type = None
             st.rerun()
         
-        if st.button("👥 Clienti", use_container_width=True,
-                    type="primary" if st.session_state.current_page in ['customers', 'customer_detail'] else "secondary"):
+        # Clienti
+        if st.button(
+            "👥 Clienti", 
+            use_container_width=True,
+            type="primary" if st.session_state.current_page in ['customers', 'customer_detail'] else "secondary"
+        ):
             st.session_state.current_page = 'customers'
             st.session_state.filter_type = 'totale'
             st.rerun()
         
-        if st.button("📜 Oroscopi", use_container_width=True,
-                    type="primary" if st.session_state.current_page == 'horoscopes' else "secondary"):
+        # Oroscopi
+        if st.button(
+            "📜 Oroscopi", 
+            use_container_width=True,
+            type="primary" if st.session_state.current_page == 'horoscopes' else "secondary"
+        ):
             st.session_state.current_page = 'horoscopes'
+            st.rerun()
+        
+        # Statistiche
+        if st.button(
+            "📊 Statistiche", 
+            use_container_width=True,
+            type="primary" if st.session_state.current_page == 'statistics' else "secondary"
+        ):
+            st.session_state.current_page = 'statistics'
             st.rerun()
         
         st.markdown("---")
@@ -67,7 +88,8 @@ def render_sidebar():
             page_names = {
                 'customers': '👥 Gestione Clienti',
                 'customer_detail': '👤 Dettaglio Cliente',
-                'horoscopes': '📜 Archivio Oroscopi'
+                'horoscopes': '📜 Archivio Oroscopi',
+                'statistics': '📊 Statistiche'
             }
             
             current_name = page_names.get(st.session_state.current_page, 'Sconosciuta')
@@ -88,7 +110,10 @@ def render_sidebar():
         # Info
         st.caption("📊 Dashboard v1.0")
         st.caption("🔒 Connesso a Supabase")
-        st.caption(f"🕐 {st.session_state.current_page}")
+        
+        # Mostra pagina corrente per debug (opzionale, puoi rimuovere)
+        if st.session_state.get('debug_mode', False):
+            st.caption(f"🔧 Debug: {st.session_state.current_page}")
 
 # ==================== ROUTING ====================
 
@@ -100,14 +125,16 @@ def main():
     
     # Routing verso la pagina corretta
     if st.session_state.current_page == 'dashboard':
+        # Dashboard principale
         dashboard.render()
         render_footer()
     
     elif st.session_state.current_page == 'customers':
+        # Lista clienti (con filtro)
         customers.render(st.session_state.filter_type or 'totale')
     
     elif st.session_state.current_page == 'customer_detail':
-        # La filter_type contiene l'ID del cliente in questo caso
+        # Dettaglio singolo cliente
         customer_id = st.session_state.filter_type
         if customer_id:
             customer_detail.render(customer_id)
@@ -118,7 +145,19 @@ def main():
             st.rerun()
     
     elif st.session_state.current_page == 'horoscopes':
+        # Archivio oroscopi
         horoscopes.render()
+    
+    elif st.session_state.current_page == 'statistics':
+        # Pagina statistiche
+        statistics.render()
+    
+    else:
+        # Fallback: pagina non trovata
+        st.error(f"❌ Pagina '{st.session_state.current_page}' non trovata")
+        st.info("Torno alla Dashboard...")
+        st.session_state.current_page = 'dashboard'
+        st.rerun()
 
 def render_footer():
     """Renderizza il footer della dashboard"""
