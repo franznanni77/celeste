@@ -39,7 +39,7 @@ def navigate_to(page, filter_type=None):
     Naviga a una pagina specifica
     Args:
         page: str - nome della pagina
-        filter_type: str - tipo di filtro (opzionale)
+        filter_type: str - tipo di filtro o customer_id (opzionale)
     """
     st.session_state.current_page = page
     st.session_state.filter_type = filter_type
@@ -67,3 +67,33 @@ def highlight_urgency(row):
         else:
             return ['background-color: #e8f4f8'] * len(row)
     return [''] * len(row)
+
+def get_status_badge(status):
+    """
+    Restituisce un badge colorato per lo stato
+    Args:
+        status: str - stato da visualizzare
+    Returns: str - HTML del badge
+    """
+    colors = {
+        'active': '#28a745',
+        'expired': '#dc3545',
+        'cancelled': '#6c757d',
+        'pending': '#ffc107'
+    }
+    
+    color = colors.get(status.lower(), '#6c757d')
+    
+    return f'<span style="background-color: {color}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold;">{status.upper()}</span>'
+
+def format_currency(amount):
+    """
+    Formatta un importo in valuta
+    Args:
+        amount: float - importo
+    Returns: str - importo formattato
+    """
+    try:
+        return f"€ {float(amount):.2f}"
+    except:
+        return "N/A"

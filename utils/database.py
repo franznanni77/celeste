@@ -337,3 +337,278 @@ def get_horoscopes_by_date(date_str):
     except Exception as e:
         st.error(f"Errore nel recupero oroscopi per data: {str(e)}")
         return pd.DataFrame()
+# ==================== DETTAGLIO SINGOLO CLIENTE ====================
+
+@st.cache_data(ttl=60)
+def get_customer_by_id(customer_id):
+    """
+    Ottiene tutti i dettagli di un singolo cliente
+    Args:
+        customer_id: str - UUID del cliente
+    Returns: dict con tutti i dati del cliente
+    """
+    try:
+        response = supabase.table('customers')\
+            .select('*')\
+            .eq('id', customer_id)\
+            .single()\
+            .execute()
+        
+        return response.data if response.data else None
+        
+    except Exception as e:
+        st.error(f"Errore nel recupero cliente: {str(e)}")
+        return None
+
+@st.cache_data(ttl=60)
+def get_customer_subscriptions_history(customer_id):
+    """
+    Ottiene lo storico completo degli abbonamenti di un cliente
+    Args:
+        customer_id: str - UUID del cliente
+    Returns: DataFrame con storico abbonamenti
+    """
+    try:
+        response = supabase.table('subscriptions')\
+            .select('*, service_plans(name, price, duration_days, is_trial)')\
+            .eq('customer_id', customer_id)\
+            .order('created_at', desc=True)\
+            .execute()
+        
+        if not response.data:
+            return pd.DataFrame()
+        
+        subs_list = []
+        for sub in response.data:
+            subs_list.append({
+                'id': sub.get('id'),
+                'piano': sub.get('service_plans', {}).get('name', 'N/A'),
+                'is_trial': sub.get('service_plans', {}).get('is_trial', False),
+                'prezzo': sub.get('service_plans', {}).get('price', 0),
+                'durata_giorni': sub.get('service_plans', {}).get('duration_days', 0),
+                'data_inizio': sub.get('start_date', 'N/A'),
+                'data_fine': sub.get('end_date', 'N/A'),
+                'stato': sub.get('status', 'N/A'),
+                'is_active': sub.get('is_active', False),
+                'payment_status': sub.get('payment_status', 'N/A'),
+                'payment_reference': sub.get('payment_reference', 'N/A'),
+                'created_at': sub.get('created_at', 'N/A'),
+                'notes': sub.get('notes', '')
+            })
+        
+        return pd.DataFrame(subs_list)
+        
+    except Exception as e:
+        st.error(f"Errore nel recupero storico abbonamenti: {str(e)}")
+        return pd.DataFrame()
+
+@st.cache_data(ttl=60)
+def get_customer_horoscopes_history(customer_id, days=30):
+    """
+    Ottiene gli oroscopi inviati al cliente negli ultimi N giorni
+    Args:
+        customer_id: str - UUID del cliente
+        days: int - numero di giorni da recuperare
+    Returns: DataFrame con storico oroscopi
+    """
+    try:
+        # Prima recupera il cliente per avere segno e ascendente
+        customer = get_customer_by_id(customer_id)
+        if not customer:
+            return pd.DataFrame()
+        
+        segno = customer.get('zodiac_sign')
+        ascendente = customer.get('ascendant')
+        
+        if not segno or not ascendente:
+            return pd.DataFrame()
+        
+        # Calcola data cutoff
+        cutoff_date = (datetime.now().date() - timedelta(days=days)).isoformat()
+        
+        # Recupera oroscopi per quella combinazione
+        response = supabase.table('daily_horoscopes')\
+            .select('*')\
+            .eq('segno', segno)\
+            .eq('ascendente', ascendente)\
+            .gte('data_oroscopo', cutoff_date)\
+            .order('data_oroscopo', desc=True)\
+            .execute()
+        
+        if not response.data:
+            return pd.DataFrame()
+        
+        return pd.DataFrame(response.data)
+        
+    except Exception as e:
+        st.error(f"Errore nel recupero storico oroscopi: {str(e)}")
+        return pd.DataFrame()
+
+@st.cache_data(ttl=60)
+def get_customer_timeline(customer_id):
+    """
+    Genera una timeline degli eventi del cliente
+    Args:
+        customer_id: str - UUID del cliente
+    Returns: list di eventi ordinati cronologicamente
+    """
+    try:
+        timeline = []
+        
+        # 1. Recupera cliente
+        customer = get_customer_by_id(customer_id)
+        if customer:
+            timeline.append({
+                'data': customer.get('created_at', ''),
+                'tipo': 'registrazione',
+                'icona': '👋',
+                'descrizione': f"Registrazione cliente: {customer.get('name')}",
+                'dettagli': f"Segno: {customer.get('zodiac_sign')}, Ascendente: {customer.get('ascendant')}"
+            })
+        
+        # 2. Recupera abbonamenti
+        subs = get_customer_subscriptions_history(customer_id)
+        if not subs.empty:
+            for _, sub in subs.iterrows():
+                # Evento inizio abbonamento
+                timeline.append({
+                    'data': sub['created_at'],
+                    'tipo': 'abbonamento_inizio',
+                    'icona': '🎁' if sub['is_trial'] else '💳',
+                    'descrizione': f"Inizio {'Trial' if sub['is_trial'] else 'Abbonamento'}: {sub['piano']}",
+                    'dettagli': f"Dal {sub['data_inizio']} al {sub['data_fine']} - Stato: {sub['stato']}"
+                })
+                
+                # Evento fine abbonamento (se scaduto)
+                if sub['stato'] == 'expired':
+                    timeline.append({
+                        'data': sub['data_fine'],
+                        'tipo': 'abbonamento_scaduto',
+                        'icona': '⏸️',
+                        'descrizione': f"Scadenza abbonamento: {sub['piano']}",
+                        'dettagli': 'Abbonamento terminato'
+                    })
+        
+        # Ordina per data decrescente
+        timeline.sort(key=lambda x: x['data'], reverse=True)
+        
+        return timeline
+        
+    except Exception as e:
+        st.error(f"Errore nella generazione timeline: {str(e)}")
+        return []
+
+# ==================== AZIONI SUI CLIENTI ====================
+
+def update_customer(customer_id, data):
+    """
+    Aggiorna i dati di un cliente
+    Args:
+        customer_id: str - UUID del cliente
+        data: dict - dati da aggiornare
+    Returns: bool - True se successo, False altrimenti
+    """
+    try:
+        response = supabase.table('customers')\
+            .update(data)\
+            .eq('id', customer_id)\
+            .execute()
+        
+        return True
+        
+    except Exception as e:
+        st.error(f"Errore nell'aggiornamento cliente: {str(e)}")
+        return False
+
+def cancel_subscription(subscription_id, reason=""):
+    """
+    Cancella un abbonamento
+    Args:
+        subscription_id: str - UUID dell'abbonamento
+        reason: str - motivo della cancellazione
+    Returns: bool - True se successo
+    """
+    try:
+        response = supabase.table('subscriptions')\
+            .update({
+                'is_active': False,
+                'status': 'cancelled',
+                'cancelled_at': datetime.now().isoformat(),
+                'cancelled_reason': reason
+            })\
+            .eq('id', subscription_id)\
+            .execute()
+        
+        return True
+        
+    except Exception as e:
+        st.error(f"Errore nella cancellazione abbonamento: {str(e)}")
+        return False
+
+def create_manual_subscription(customer_id, service_plan_id, payment_reference=""):
+    """
+    Crea un nuovo abbonamento manualmente
+    Args:
+        customer_id: str - UUID del cliente
+        service_plan_id: str - UUID del piano di servizio
+        payment_reference: str - riferimento pagamento
+    Returns: bool - True se successo
+    """
+    try:
+        # Recupera il piano per calcolare end_date
+        plan = supabase.table('service_plans')\
+            .select('*')\
+            .eq('id', service_plan_id)\
+            .single()\
+            .execute()
+        
+        if not plan.data:
+            st.error("Piano non trovato")
+            return False
+        
+        duration = plan.data.get('duration_days', 30)
+        start_date = datetime.now().date()
+        end_date = start_date + timedelta(days=duration)
+        
+        # Crea abbonamento
+        response = supabase.table('subscriptions')\
+            .insert({
+                'customer_id': customer_id,
+                'service_plan_id': service_plan_id,
+                'start_date': start_date.isoformat(),
+                'end_date': end_date.isoformat(),
+                'is_active': True,
+                'status': 'active',
+                'payment_status': 'paid',
+                'payment_reference': payment_reference,
+                'renewal_enabled': False
+            })\
+            .execute()
+        
+        return True
+        
+    except Exception as e:
+        st.error(f"Errore nella creazione abbonamento: {str(e)}")
+        return False
+
+@st.cache_data(ttl=300)
+def get_available_service_plans():
+    """
+    Ottiene tutti i piani di servizio disponibili
+    Returns: DataFrame con i piani
+    """
+    try:
+        response = supabase.table('service_plans')\
+            .select('*')\
+            .eq('is_active', True)\
+            .order('price')\
+            .execute()
+        
+        if not response.data:
+            return pd.DataFrame()
+        
+        return pd.DataFrame(response.data)
+        
+    except Exception as e:
+        st.error(f"Errore nel recupero piani: {str(e)}")
+        return pd.DataFrame()
