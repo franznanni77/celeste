@@ -8,7 +8,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from utils.config import supabase
 
-# ==================== STATISTICHE GENERALI ====================
+# ==================== STATISTICHE GENERALI (DASHBOARD) ====================
 
 @st.cache_data(ttl=60)
 def get_customer_stats():
@@ -285,58 +285,6 @@ def get_filtered_customers(filter_type):
     
     return filtered
 
-# ==================== OROSCOPI ====================
-
-@st.cache_data(ttl=60)
-def get_all_horoscopes(days=7):
-    """
-    Ottiene tutti gli oroscopi degli ultimi N giorni
-    Args:
-        days: int - numero di giorni da recuperare
-    Returns: DataFrame con gli oroscopi
-    """
-    try:
-        cutoff_date = (datetime.now().date() - timedelta(days=days)).isoformat()
-        
-        response = supabase.table('daily_horoscopes')\
-            .select('*')\
-            .gte('data_oroscopo', cutoff_date)\
-            .order('data_oroscopo', desc=True)\
-            .execute()
-        
-        if not response.data:
-            return pd.DataFrame()
-        
-        df = pd.DataFrame(response.data)
-        return df
-        
-    except Exception as e:
-        st.error(f"Errore nel recupero oroscopi: {str(e)}")
-        return pd.DataFrame()
-
-@st.cache_data(ttl=60)
-def get_horoscopes_by_date(date_str):
-    """
-    Ottiene tutti gli oroscopi per una data specifica
-    Args:
-        date_str: str - data in formato YYYY-MM-DD
-    Returns: DataFrame con gli oroscopi
-    """
-    try:
-        response = supabase.table('daily_horoscopes')\
-            .select('*')\
-            .eq('data_oroscopo', date_str)\
-            .execute()
-        
-        if not response.data:
-            return pd.DataFrame()
-        
-        df = pd.DataFrame(response.data)
-        return df
-        
-    except Exception as e:
-        st.error(f"Errore nel recupero oroscopi per data: {str(e)}")
-        return pd.DataFrame()
 # ==================== DETTAGLIO SINGOLO CLIENTE ====================
 
 @st.cache_data(ttl=60)
@@ -612,32 +560,63 @@ def get_available_service_plans():
     except Exception as e:
         st.error(f"Errore nel recupero piani: {str(e)}")
         return pd.DataFrame()
+
+# ==================== OROSCOPI ====================
+
+@st.cache_data(ttl=60)
+def get_all_horoscopes(days=7):
+    """
+    Ottiene tutti gli oroscopi degli ultimi N giorni
+    Args:
+        days: int - numero di giorni da recuperare
+    Returns: DataFrame con gli oroscopi
+    """
+    try:
+        cutoff_date = (datetime.now().date() - timedelta(days=days)).isoformat()
+        
+        response = supabase.table('daily_horoscopes')\
+            .select('*')\
+            .gte('data_oroscopo', cutoff_date)\
+            .order('data_oroscopo', desc=True)\
+            .execute()
+        
+        if not response.data:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(response.data)
+        return df
+        
+    except Exception as e:
+        st.error(f"Errore nel recupero oroscopi: {str(e)}")
+        return pd.DataFrame()
+
+@st.cache_data(ttl=60)
+def get_horoscopes_by_date(date_str):
+    """
+    Ottiene tutti gli oroscopi per una data specifica
+    Args:
+        date_str: str - data in formato YYYY-MM-DD
+    Returns: DataFrame con gli oroscopi
+    """
+    try:
+        response = supabase.table('daily_horoscopes')\
+            .select('*')\
+            .eq('data_oroscopo', date_str)\
+            .execute()
+        
+        if not response.data:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(response.data)
+        return df
+        
+    except Exception as e:
+        st.error(f"Errore nel recupero oroscopi per data: {str(e)}")
+        return pd.DataFrame()
+
 # ==================== STATISTICHE E ANALYTICS ====================
 
-from datetime import datetime, timedelta
-import pandas as pd
-
-def get_period_dates(period):
-    """
-    Restituisce le date di inizio e fine per un periodo
-    Args:
-        period: str - 'today', 'week', 'month'
-    Returns: tuple (start_date, end_date)
-    """
-    today = datetime.now().date()
-    
-    if period == 'today':
-        return today, today
-    elif period == 'week':
-        start = today - timedelta(days=7)
-        return start, today
-    elif period == 'month':
-        start = today - timedelta(days=30)
-        return start, today
-    else:
-        return today, today
-
-@st.cache_data(ttl=300)  # Cache 5 minuti per statistiche
+@st.cache_data(ttl=300)
 def get_stats_registrations(period='today'):
     """
     Ottiene il numero di nuovi utenti iscritti in un periodo
@@ -646,7 +625,20 @@ def get_stats_registrations(period='today'):
     Returns: int - numero nuovi iscritti
     """
     try:
-        start_date, end_date = get_period_dates(period)
+        today = datetime.now().date()
+        
+        if period == 'today':
+            start_date = today
+            end_date = today
+        elif period == 'week':
+            start_date = today - timedelta(days=7)
+            end_date = today
+        elif period == 'month':
+            start_date = today - timedelta(days=30)
+            end_date = today
+        else:
+            start_date = today
+            end_date = today
         
         # Converte in datetime per confronto
         start_datetime = datetime.combine(start_date, datetime.min.time()).isoformat()
@@ -658,7 +650,7 @@ def get_stats_registrations(period='today'):
             .lte('created_at', end_datetime)\
             .execute()
         
-        return response.count if hasattr(response, 'count') else 0
+        return response.count if hasattr(response, 'count') else len(response.data) if response.data else 0
         
     except Exception as e:
         st.error(f"Errore nel recupero registrazioni: {str(e)}")
@@ -673,7 +665,20 @@ def get_stats_payments(period='today'):
     Returns: int - numero pagamenti
     """
     try:
-        start_date, end_date = get_period_dates(period)
+        today = datetime.now().date()
+        
+        if period == 'today':
+            start_date = today
+            end_date = today
+        elif period == 'week':
+            start_date = today - timedelta(days=7)
+            end_date = today
+        elif period == 'month':
+            start_date = today - timedelta(days=30)
+            end_date = today
+        else:
+            start_date = today
+            end_date = today
         
         # Abbonamenti iniziati nel periodo che NON sono trial
         response = supabase.table('subscriptions')\
@@ -683,7 +688,7 @@ def get_stats_payments(period='today'):
             .eq('service_plans.is_trial', False)\
             .execute()
         
-        return response.count if hasattr(response, 'count') else 0
+        return response.count if hasattr(response, 'count') else len(response.data) if response.data else 0
         
     except Exception as e:
         st.error(f"Errore nel recupero pagamenti: {str(e)}")
@@ -698,7 +703,20 @@ def get_stats_expired_not_renewed(period='today'):
     Returns: int - numero scaduti non rinnovati
     """
     try:
-        start_date, end_date = get_period_dates(period)
+        today = datetime.now().date()
+        
+        if period == 'today':
+            start_date = today
+            end_date = today
+        elif period == 'week':
+            start_date = today - timedelta(days=7)
+            end_date = today
+        elif period == 'month':
+            start_date = today - timedelta(days=30)
+            end_date = today
+        else:
+            start_date = today
+            end_date = today
         
         # Abbonamenti scaduti nel periodo
         expired = supabase.table('subscriptions')\
@@ -716,7 +734,7 @@ def get_stats_expired_not_renewed(period='today'):
         
         # Conta quanti NON hanno un abbonamento attivo
         not_renewed = 0
-        for customer_id in set(expired_customer_ids):  # Usa set per evitare duplicati
+        for customer_id in set(expired_customer_ids):
             # Verifica se ha abbonamento attivo
             active = supabase.table('subscriptions')\
                 .select('id', count='exact')\
@@ -790,7 +808,20 @@ def get_revenue_by_period(period='today'):
     Returns: float - revenue totale
     """
     try:
-        start_date, end_date = get_period_dates(period)
+        today = datetime.now().date()
+        
+        if period == 'today':
+            start_date = today
+            end_date = today
+        elif period == 'week':
+            start_date = today - timedelta(days=7)
+            end_date = today
+        elif period == 'month':
+            start_date = today - timedelta(days=30)
+            end_date = today
+        else:
+            start_date = today
+            end_date = today
         
         # Abbonamenti paganti iniziati nel periodo
         response = supabase.table('subscriptions')\
