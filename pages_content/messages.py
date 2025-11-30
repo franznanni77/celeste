@@ -6,7 +6,7 @@ Visualizza e gestisce i messaggi ricevuti dagli utenti
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
-from utils.database import get_supabase_client
+from utils.config import supabase  # <-- IMPORT CORRETTO
 
 # ==================== FUNZIONI DATABASE ====================
 
@@ -21,8 +21,6 @@ def get_messages(limit: int = 100, phone_filter: str = None, days_back: int = 7)
         days_back: Giorni indietro da cui recuperare i messaggi
     """
     try:
-        supabase = get_supabase_client()
-        
         # Data limite
         date_limit = datetime.now() - timedelta(days=days_back)
         
@@ -48,8 +46,6 @@ def get_messages(limit: int = 100, phone_filter: str = None, days_back: int = 7)
 def get_message_stats():
     """Recupera statistiche sui messaggi"""
     try:
-        supabase = get_supabase_client()
-        
         # Messaggi oggi
         today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         
@@ -89,8 +85,6 @@ def get_message_stats():
 def get_unique_phone_numbers():
     """Recupera lista di numeri di telefono unici per il filtro"""
     try:
-        supabase = get_supabase_client()
-        
         response = supabase.table('whatsapp_messages')\
             .select('phone_number, pushname')\
             .order('created_at', desc=True)\
