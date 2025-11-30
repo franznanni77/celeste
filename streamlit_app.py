@@ -5,7 +5,7 @@ Gestisce il routing tra le diverse pagine dell'applicazione
 
 import streamlit as st
 from utils.config import apply_custom_css
-from pages_content import dashboard, customers, horoscopes, customer_detail, statistics
+from pages_content import dashboard, customers, horoscopes, customer_detail, statistics, messages
 
 # ==================== CONFIGURAZIONE ====================
 
@@ -79,6 +79,15 @@ def render_sidebar():
             st.session_state.current_page = 'statistics'
             st.rerun()
         
+        # Messaggi
+        if st.button(
+            "📨 Messaggi", 
+            use_container_width=True,
+            type="primary" if st.session_state.current_page == 'messages' else "secondary"
+        ):
+            st.session_state.current_page = 'messages'
+            st.rerun()
+        
         st.markdown("---")
         
         # Breadcrumb / Stato corrente
@@ -89,7 +98,9 @@ def render_sidebar():
                 'customers': '👥 Gestione Clienti',
                 'customer_detail': '👤 Dettaglio Cliente',
                 'horoscopes': '📜 Archivio Oroscopi',
-                'statistics': '📊 Statistiche'
+                'statistics': '📊 Statistiche',
+                'messages': '📨 Messaggi WhatsApp'
+
             }
             
             current_name = page_names.get(st.session_state.current_page, 'Sconosciuta')
@@ -151,6 +162,10 @@ def main():
     elif st.session_state.current_page == 'statistics':
         # Pagina statistiche
         statistics.render()
+
+    elif st.session_state.current_page == 'messages':
+        # Pagina messaggi WhatsApp
+        messages.render()
     
     else:
         # Fallback: pagina non trovata
